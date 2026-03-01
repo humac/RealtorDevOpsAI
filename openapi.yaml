@@ -1,0 +1,475 @@
+openapi: 3.1.0
+info:
+  title: RealtorDevOpsAI API
+  description: >
+    AI-powered real estate development analysis platform for Ottawa, Ontario.
+    Identifies properties with development potential by aggregating municipal data,
+    zoning bylaws, and survey information, then uses AI to generate feasibility
+    studies, cost estimates, and profit projections.
+  version: 0.1.0
+  contact:
+    name: RealtorDevOpsAI
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development
+
+paths:
+  /properties/search:
+    get:
+      summary: Search properties
+      description: Search by address, MLS number, or parcel ID
+      tags: [Properties]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: List of matching properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyBrief'
+
+  /properties/filter:
+    get:
+      summary: Filter properties
+      description: Filter by ward, neighbourhood, lot size, zoning, assessed value
+      tags: [Properties]
+      parameters:
+        - name: ward
+          in: query
+          schema:
+            type: string
+        - name: neighbourhood
+          in: query
+          schema:
+            type: string
+        - name: min_lot_size
+          in: query
+          schema:
+            type: number
+        - name: max_lot_size
+          in: query
+          schema:
+            type: number
+        - name: zoning_code
+          in: query
+          schema:
+            type: string
+        - name: min_assessed_value
+          in: query
+          schema:
+            type: number
+        - name: max_assessed_value
+          in: query
+          schema:
+            type: number
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Filtered properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyBrief'
+
+  /properties/nearby:
+    get:
+      summary: Find nearby properties
+      description: Spatial search using PostGIS
+      tags: [Properties]
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: radius_km
+          in: query
+          schema:
+            type: number
+            default: 1.0
+      responses:
+        '200':
+          description: Nearby properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyBrief'
+
+  /properties/{property_id}:
+    get:
+      summary: Get property details
+      tags: [Properties]
+      parameters:
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Property details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '404':
+          description: Property not found
+
+  /analyze-property:
+    post:
+      summary: Analyze property for development potential
+      description: >
+        Orchestrates data collection from Ottawa Open Data, GeoOttawa,
+        zoning by-law parsing, AI scenario generation, and cost estimation.
+      tags: [Analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+            example:
+              address: "123 Bank Street, Ottawa, ON"
+              parcel_id: "02735-0123"
+              acquisition_cost: 850000
+              target_use: "multi_unit_rental"
+      responses:
+        '200':
+          description: Development analysis with scenarios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+
+  /scenarios/property/{property_id}:
+    get:
+      summary: Get scenarios for a property
+      tags: [Scenarios]
+      parameters:
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of scenarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Scenario'
+
+  /scenarios/{scenario_id}:
+    get:
+      summary: Get scenario details
+      tags: [Scenarios]
+      parameters:
+        - name: scenario_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Scenario details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+
+  /scenarios/compare:
+    post:
+      summary: Compare scenarios side-by-side
+      tags: [Scenarios]
+      parameters:
+        - name: scenario_ids
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: Scenario comparison
+
+  /reports/property/{property_id}/pdf:
+    get:
+      summary: Generate PDF report
+      tags: [Reports]
+      parameters:
+        - name: property_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PDF report
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /health:
+    get:
+      summary: Health check
+      tags: [System]
+      responses:
+        '200':
+          description: Service healthy
+
+components:
+  schemas:
+    PropertyBrief:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parcel_id:
+          type: string
+        address:
+          type: string
+        zoning_code:
+          type: string
+          nullable: true
+        lot_area_sqft:
+          type: number
+          nullable: true
+        assessed_value:
+          type: number
+          nullable: true
+        opportunity_score:
+          type: number
+          nullable: true
+
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parcel_id:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        province:
+          type: string
+        lot_width_ft:
+          type: number
+          nullable: true
+        lot_depth_ft:
+          type: number
+          nullable: true
+        lot_area_sqft:
+          type: number
+          nullable: true
+        current_use:
+          type: string
+          nullable: true
+        structure_type:
+          type: string
+          nullable: true
+        year_built:
+          type: integer
+          nullable: true
+        assessed_value:
+          type: number
+          nullable: true
+        zoning_code:
+          type: string
+          nullable: true
+        is_heritage:
+          type: boolean
+        is_floodplain:
+          type: boolean
+        has_easements:
+          type: boolean
+        opportunity_score:
+          type: number
+          nullable: true
+
+    AnalyzeRequest:
+      type: object
+      properties:
+        address:
+          type: string
+        parcel_id:
+          type: string
+        acquisition_cost:
+          type: number
+        target_use:
+          type: string
+          enum: [single_family, duplex, multi_unit_rental, commercial, mixed_use]
+          default: multi_unit_rental
+
+    AnalysisResponse:
+      type: object
+      properties:
+        property_id:
+          type: string
+          format: uuid
+        address:
+          type: string
+        parcel_id:
+          type: string
+        zoning_code:
+          type: string
+        zoning_summary:
+          type: string
+        lot_area_sqft:
+          type: number
+        overall_opportunity_score:
+          type: number
+        scenarios:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scenario'
+        disclaimer:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+
+    Scenario:
+      type: object
+      properties:
+        scenario_type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        target_use:
+          type: string
+        proposed_units:
+          type: integer
+        proposed_storeys:
+          type: integer
+        proposed_gfa_sqft:
+          type: number
+        costs:
+          $ref: '#/components/schemas/CostBreakdown'
+        projected_sale_revenue:
+          type: number
+          nullable: true
+        projected_annual_rental:
+          type: number
+          nullable: true
+        roi_metrics:
+          $ref: '#/components/schemas/ROIMetrics'
+        timeline_months:
+          type: integer
+        risks:
+          type: array
+          items:
+            type: string
+        opportunity_score:
+          type: number
+        confidence_level:
+          type: string
+          enum: [high, medium, low]
+        sensitivity_analysis:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/SensitivityResult'
+
+    CostBreakdown:
+      type: object
+      properties:
+        acquisition:
+          type: number
+        teardown:
+          type: number
+        hard_construction:
+          type: number
+        soft_costs:
+          type: number
+        development_charges:
+          type: number
+        permit_fees:
+          type: number
+        financing:
+          type: number
+        hst:
+          type: number
+        total:
+          type: number
+
+    ROIMetrics:
+      type: object
+      properties:
+        profit:
+          type: number
+        profit_margin_pct:
+          type: number
+        roi_pct:
+          type: number
+        irr_pct:
+          type: number
+          nullable: true
+        cap_rate_pct:
+          type: number
+          nullable: true
+        cash_on_cash_pct:
+          type: number
+          nullable: true
+
+    SensitivityResult:
+      type: object
+      properties:
+        variable:
+          type: string
+        base_value:
+          type: number
+        low_case:
+          type: number
+        high_case:
+          type: number
+        impact_on_roi_pct:
+          type: number
