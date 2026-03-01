@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import Header from './components/common/Header';
 import PropertyMap from './components/map/PropertyMap';
 import AnalysisPanel from './components/analysis/AnalysisPanel';
 import AnalysisForm from './components/dashboard/AnalysisForm';
+import SettingsPage from './components/settings/SettingsPage';
 import { useAnalysis } from './hooks/useAnalysis';
 import type { AnalyzeRequest } from './types';
 
-export default function App() {
+function HomePage() {
   const { analysis, loading, error, runAnalysis, clearAnalysis } = useAnalysis();
   const [selectedCoords, setSelectedCoords] = useState<[number, number] | null>(null);
 
@@ -55,5 +57,14 @@ export default function App() {
         RealtorDevOpsAI | AI analysis is not legal or financial advice. Consult qualified professionals.
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+    </Routes>
   );
 }

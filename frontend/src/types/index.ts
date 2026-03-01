@@ -111,3 +111,24 @@ export interface AnalyzeRequest {
 export type MapLayer = 'zoning' | 'parcels' | 'floodplain' | 'heritage';
 
 export type TabId = 'overview' | 'zoning' | 'costs' | 'scenarios';
+
+// LLM Settings
+export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'ollama';
+
+export interface LLMProviderConfig {
+  provider: LLMProvider;
+  label: string;
+  model: string;
+  available_models: string[];
+  is_configured: boolean;
+}
+
+export interface LLMSettings {
+  active_provider: LLMProvider;
+  providers: LLMProviderConfig[];
+}
+
+export interface LLMSettingsUpdate {
+  provider: LLMProvider;
+  model?: string;
+}

@@ -1,8 +1,8 @@
 """
 AI Analysis Service.
 
-Uses OpenAI GPT-4 with function calling to generate development scenarios
-and feasibility assessments from property and zoning data.
+Uses configurable LLM providers (OpenAI, Anthropic, Google, Ollama) to generate
+development scenarios and feasibility assessments from property and zoning data.
 """
 
 import hashlib
@@ -18,13 +18,7 @@ from app.services.ottawa_cost_engine import (
     DevelopmentType,
     generate_full_cost_estimate,
 )
-from app.services.zoning_parser import (
-    ZoningEnvelope,
-    calculate_development_potential,
-    map_zone_to_development_types,
-)
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
+from app.services.zoning_parser import ZoningEnvelope
 
 SYSTEM_PROMPT = """You are an expert real estate development analyst specializing in Ottawa, Ontario, Canada.
 You analyze property data, zoning bylaws, and market conditions to generate feasible development scenarios.
@@ -88,7 +82,7 @@ Generate 2-4 development scenarios ranked by feasibility. For each scenario, pro
 Consider the highest-and-best-use principle. Evaluate teardown vs renovation.
 For the target use "{target_use}", prioritize scenarios that align with this goal."""
 
-# GPT-4 function calling schema for structured output
+# Function calling schema for structured output
 SCENARIO_FUNCTION = {
     "name": "generate_development_scenarios",
     "description": "Generate structured development scenarios for a property",
@@ -150,17 +144,30 @@ SCENARIO_FUNCTION = {
                             "type": "array",
                             "items": {"type": "string"},
                         },
-                        "opportunity_score": {"type": "number", "minimum": 0, "maximum": 100},
+                        "opportunity_score": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100,
+                        },
                         "confidence_level": {
                             "type": "string",
                             "enum": ["high", "medium", "low"],
                         },
                     },
                     "required": [
-                        "scenario_type", "title", "description", "target_use",
-                        "proposed_units", "proposed_storeys", "proposed_gfa_sqft",
-                        "construction_type", "requires_teardown", "construction_months",
-                        "risks", "opportunity_score", "confidence_level",
+                        "scenario_type",
+                        "title",
+                        "description",
+                        "target_use",
+                        "proposed_units",
+                        "proposed_storeys",
+                        "proposed_gfa_sqft",
+                        "construction_type",
+                        "requires_teardown",
+                        "construction_months",
+                        "risks",
+                        "opportunity_score",
+                        "confidence_level",
                     ],
                 },
             },
@@ -169,8 +176,18 @@ SCENARIO_FUNCTION = {
     },
 }
 
+# JSON schema text for providers that don't support function calling natively
+SCENARIO_JSON_SCHEMA = json.dumps(SCENARIO_FUNCTION["parameters"], indent=2)
 
-def _build_prompt(property_data: dict, zoning_envelope: ZoningEnvelope | None, dev_potential: dict) -> str:
+STRUCTURED_OUTPUT_SUFFIX = f"""
+
+Respond with ONLY a JSON object matching this schema (no markdown fences, no extra text):
+{SCENARIO_JSON_SCHEMA}"""
+
+
+def _build_prompt(
+    property_data: dict, zoning_envelope: ZoningEnvelope | None, dev_potential: dict
+) -> str:
     """Build the analysis prompt from property data."""
     zoning_analysis = "No zoning data available."
     if zoning_envelope:
@@ -211,21 +228,9 @@ def _build_prompt(property_data: dict, zoning_envelope: ZoningEnvelope | None, d
     )
 
 
-async def generate_scenarios(
-    property_data: dict,
-    zoning_envelope: ZoningEnvelope | None,
-    dev_potential: dict,
-) -> dict:
-    """Use GPT-4 to generate development scenarios for a property."""
-    prompt = _build_prompt(property_data, zoning_envelope, dev_potential)
-    prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
-
-    # Check cache
-    cache_key = f"ai_analysis:{prompt_hash}"
-    cached = await get_cached(cache_key)
-    if cached:
-        return cached
-
+async def _call_openai(prompt: str) -> dict:
+    """Call OpenAI API with function calling."""
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
         model=settings.openai_model,
         messages=[
@@ -237,16 +242,121 @@ async def generate_scenarios(
         temperature=0.3,
         max_tokens=4000,
     )
-
     message = response.choices[0].message
     if message.function_call:
-        ai_result = json.loads(message.function_call.arguments)
+        return json.loads(message.function_call.arguments)
+    return _empty_result()
+
+
+async def _call_anthropic(prompt: str) -> dict:
+    """Call Anthropic API with tool use."""
+    import anthropic
+
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await client.messages.create(
+        model=settings.anthropic_model,
+        max_tokens=4000,
+        system=SYSTEM_PROMPT,
+        tools=[
+            {
+                "name": SCENARIO_FUNCTION["name"],
+                "description": SCENARIO_FUNCTION["description"],
+                "input_schema": SCENARIO_FUNCTION["parameters"],
+            }
+        ],
+        tool_choice={"type": "tool", "name": "generate_development_scenarios"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+    for block in response.content:
+        if block.type == "tool_use":
+            return block.input
+    return _empty_result()
+
+
+async def _call_google(prompt: str) -> dict:
+    """Call Google Gemini API."""
+    from google import genai
+
+    client = genai.Client(api_key=settings.google_api_key)
+    full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}{STRUCTURED_OUTPUT_SUFFIX}"
+    response = await client.aio.models.generate_content(
+        model=settings.google_model,
+        contents=full_prompt,
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
+async def _call_ollama(prompt: str) -> dict:
+    """Call Ollama Cloud via OpenAI-compatible API."""
+    client = AsyncOpenAI(
+        base_url=f"{settings.ollama_base_url.rstrip('/')}/v1",
+        api_key=settings.ollama_api_key or "ollama",
+    )
+    full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}{STRUCTURED_OUTPUT_SUFFIX}"
+    response = await client.chat.completions.create(
+        model=settings.ollama_model,
+        messages=[{"role": "user", "content": full_prompt}],
+        temperature=0.3,
+        max_tokens=4000,
+    )
+    text = response.choices[0].message.content.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
+def _empty_result() -> dict:
+    return {
+        "zoning_summary": "Unable to generate AI analysis.",
+        "highest_best_use": "Manual review required.",
+        "scenarios": [],
+    }
+
+
+def _get_active_model() -> tuple[str, str]:
+    """Return (provider, model) for the active LLM."""
+    provider = settings.llm_provider
+    model_map = {
+        "openai": settings.openai_model,
+        "anthropic": settings.anthropic_model,
+        "google": settings.google_model,
+        "ollama": settings.ollama_model,
+    }
+    return provider, model_map.get(provider, settings.openai_model)
+
+
+async def _call_llm(prompt: str) -> dict:
+    """Route to the active LLM provider."""
+    provider = settings.llm_provider
+    if provider == "anthropic":
+        return await _call_anthropic(prompt)
+    elif provider == "google":
+        return await _call_google(prompt)
+    elif provider == "ollama":
+        return await _call_ollama(prompt)
     else:
-        ai_result = {
-            "zoning_summary": "Unable to generate AI analysis.",
-            "highest_best_use": "Manual review required.",
-            "scenarios": [],
-        }
+        return await _call_openai(prompt)
+
+
+async def generate_scenarios(
+    property_data: dict,
+    zoning_envelope: ZoningEnvelope | None,
+    dev_potential: dict,
+) -> dict:
+    """Use the configured LLM to generate development scenarios for a property."""
+    prompt = _build_prompt(property_data, zoning_envelope, dev_potential)
+    prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+
+    # Check cache
+    cache_key = f"ai_analysis:{prompt_hash}"
+    cached = await get_cached(cache_key)
+    if cached:
+        return cached
+
+    ai_result = await _call_llm(prompt)
 
     # Enrich scenarios with cost estimates
     enriched_scenarios = []
@@ -272,11 +382,14 @@ async def generate_scenarios(
 
         enriched_scenarios.append(scenario)
 
+    provider, model_name = _get_active_model()
+
     result = {
         "zoning_summary": ai_result.get("zoning_summary", ""),
         "highest_best_use": ai_result.get("highest_best_use", ""),
         "scenarios": enriched_scenarios,
-        "ai_model": settings.openai_model,
+        "ai_model": model_name,
+        "ai_provider": provider,
         "prompt_hash": prompt_hash,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -310,13 +423,19 @@ def build_analysis_response(
             "proposed_gfa_sqft": s.get("proposed_gfa_sqft"),
             "costs": {
                 "acquisition": property_data.get("acquisition_cost", 0),
-                "teardown": cost_est.get("teardown", {}).get("total", 0) if cost_est else 0,
-                "hard_construction": cost_est.get("construction", {}).get("total", 0) if cost_est else 0,
-                "soft_costs": cost_est.get("soft_costs", {}).get("total", 0) if cost_est else 0,
-                "development_charges": cost_est.get("soft_costs", {}).get("development_charges", 0) if cost_est else 0,
-                "permit_fees": cost_est.get("soft_costs", {}).get("building_permit", 0) if cost_est else 0,
-                "financing": cost_est.get("financing", {}).get("total", 0) if cost_est else 0,
-                "hst": cost_est.get("hst", {}).get("total", 0) if cost_est else 0,
+                "teardown": (cost_est.get("teardown", {}).get("total", 0) if cost_est else 0),
+                "hard_construction": (
+                    cost_est.get("construction", {}).get("total", 0) if cost_est else 0
+                ),
+                "soft_costs": (cost_est.get("soft_costs", {}).get("total", 0) if cost_est else 0),
+                "development_charges": (
+                    cost_est.get("soft_costs", {}).get("development_charges", 0) if cost_est else 0
+                ),
+                "permit_fees": (
+                    cost_est.get("soft_costs", {}).get("building_permit", 0) if cost_est else 0
+                ),
+                "financing": (cost_est.get("financing", {}).get("total", 0) if cost_est else 0),
+                "hst": (cost_est.get("hst", {}).get("total", 0) if cost_est else 0),
                 "total": cost_est.get("total_cost", 0) if cost_est else 0,
             },
             "projected_sale_revenue": revenue.get("total_sale_revenue"),
@@ -333,7 +452,7 @@ def build_analysis_response(
             "risks": s.get("risks", []),
             "opportunity_score": s.get("opportunity_score", 50),
             "confidence_level": s.get("confidence_level", "medium"),
-            "sensitivity_analysis": cost_est.get("sensitivity_analysis") if cost_est else None,
+            "sensitivity_analysis": (cost_est.get("sensitivity_analysis") if cost_est else None),
         }
         scenarios.append(scenario)
 
