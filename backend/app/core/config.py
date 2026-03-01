@@ -14,9 +14,25 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     cache_ttl_seconds: int = 3600
 
+    # LLM Provider: "openai", "anthropic", "google", "ollama"
+    llm_provider: str = "openai"
+
     # OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4"
+
+    # Anthropic
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-20250514"
+
+    # Google
+    google_api_key: str = ""
+    google_model: str = "gemini-2.0-flash"
+
+    # Ollama
+    ollama_base_url: str = "https://cloud.ollama.com"
+    ollama_api_key: str = ""
+    ollama_model: str = "llama3"
 
     # External APIs
     ottawa_open_data_url: str = "https://open.ottawa.ca/api"

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { scoreColor, scoreBgColor } from '../../utils/format';
 
 interface HeaderProps {
@@ -6,6 +7,8 @@ interface HeaderProps {
 }
 
 export default function Header({ opportunityScore, onNewAnalysis }: HeaderProps) {
+  const navigate = useNavigate();
+
   return (
     <header className="bg-primary-900 text-white px-6 py-3 flex items-center justify-between shadow-md">
       <div className="flex items-center gap-4">
@@ -13,23 +16,31 @@ export default function Header({ opportunityScore, onNewAnalysis }: HeaderProps)
         <span className="text-primary-300 text-sm">Ottawa Development Analysis</span>
       </div>
 
-      {opportunityScore !== null && (
-        <div className="flex items-center gap-4">
-          <div
-            className={`px-4 py-1 rounded-full border font-semibold text-sm ${scoreBgColor(opportunityScore)}`}
-          >
-            <span className={scoreColor(opportunityScore)}>
-              Opportunity Score: {opportunityScore.toFixed(0)}/100
-            </span>
-          </div>
-          <button
-            onClick={onNewAnalysis}
-            className="text-sm bg-primary-700 hover:bg-primary-600 px-3 py-1 rounded transition-colors"
-          >
-            New Analysis
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-4">
+        {opportunityScore !== null && (
+          <>
+            <div
+              className={`px-4 py-1 rounded-full border font-semibold text-sm ${scoreBgColor(opportunityScore)}`}
+            >
+              <span className={scoreColor(opportunityScore)}>
+                Opportunity Score: {opportunityScore.toFixed(0)}/100
+              </span>
+            </div>
+            <button
+              onClick={onNewAnalysis}
+              className="text-sm bg-primary-700 hover:bg-primary-600 px-3 py-1 rounded transition-colors"
+            >
+              New Analysis
+            </button>
+          </>
+        )}
+        <button
+          onClick={() => navigate('/settings')}
+          className="text-sm bg-primary-700 hover:bg-primary-600 px-3 py-1 rounded transition-colors"
+        >
+          Settings
+        </button>
+      </div>
     </header>
   );
 }

@@ -1,5 +1,12 @@
 import axios from 'axios';
-import type { AnalysisResponse, AnalyzeRequest, Property, PropertyBrief } from '../types';
+import type {
+  AnalysisResponse,
+  AnalyzeRequest,
+  LLMSettings,
+  LLMSettingsUpdate,
+  Property,
+  PropertyBrief,
+} from '../types';
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -72,6 +79,17 @@ export async function downloadReport(propertyId: string): Promise<Blob> {
   const { data } = await api.get(`/reports/property/${propertyId}/pdf`, {
     responseType: 'blob',
   });
+  return data;
+}
+
+// LLM Settings endpoints
+export async function getLLMSettings(): Promise<LLMSettings> {
+  const { data } = await api.get('/llm-settings');
+  return data;
+}
+
+export async function updateLLMSettings(update: LLMSettingsUpdate): Promise<LLMSettings> {
+  const { data } = await api.put('/llm-settings', update);
   return data;
 }
 
