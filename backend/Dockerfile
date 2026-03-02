@@ -3,7 +3,11 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # System dependencies for WeasyPrint and PostGIS
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Retry apt-get update to handle transient network failures
+RUN for i in 1 2 3; do \
+      apt-get update -qq && break || sleep 5; \
+    done && \
+    apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     libgdal-dev \
