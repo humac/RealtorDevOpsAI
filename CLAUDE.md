@@ -4,7 +4,7 @@ Project context for AI assistants working on this codebase.
 
 ## What This Project Does
 
-RealtorDevOpsAI is an AI-powered real estate development analysis platform for Ottawa, Ontario. It parses Ottawa zoning bylaws, estimates development costs with 2024 local pricing, and uses GPT-4 to generate feasibility scenarios for property investors.
+RealtorDevOpsAI is an AI-powered real estate development analysis platform for Ottawa, Ontario. It parses Ottawa zoning bylaws, estimates development costs with 2024 local pricing, and uses configurable LLM providers (OpenAI, Anthropic, Google, Ollama Cloud) to generate feasibility scenarios for property investors.
 
 ## Build & Run
 
@@ -59,7 +59,7 @@ npx tsc --noEmit          # TypeScript type check
 |---|---|
 | `zoning_parser.py` | Parses Ottawa By-law 2008-250 zone codes (R1–R5, GM, TM, MC, LC, AM), computes building envelopes and development potential |
 | `ottawa_cost_engine.py` | Ottawa 2024 cost estimation: construction ($175–$425/sqft by type), teardown, development charges, soft costs (15%), financing, HST |
-| `ai_analysis.py` | GPT-4 integration with function calling for structured scenario generation |
+| `ai_analysis.py` | Multi-provider LLM integration (OpenAI, Anthropic, Google, Ollama Cloud) for structured scenario generation |
 | `data_aggregator.py` | Fetches from Ottawa Open Data API and GeoOttawa WFS/WMS services |
 
 ### API Routes (backend/app/api/v1/)
@@ -70,6 +70,7 @@ npx tsc --noEmit          # TypeScript type check
 | `properties.py` | `/api/v1/properties` | Property CRUD, search, spatial queries |
 | `scenarios.py` | `/api/v1/scenarios` | Scenario retrieval and comparison |
 | `reports.py` | `/api/v1/reports` | PDF report generation |
+| `llm_settings.py` | `/api/v1/llm-settings` | LLM provider and model configuration |
 
 ### Frontend Components (frontend/src/components/)
 
@@ -78,6 +79,7 @@ npx tsc --noEmit          # TypeScript type check
 | `map/` | `PropertyMap.tsx` — Mapbox GL map with zoning overlays |
 | `dashboard/` | `AnalysisForm.tsx` — Property search and analysis trigger |
 | `analysis/` | `AnalysisPanel.tsx` — Tabbed panel (Overview, Zoning, Costs, Scenarios) |
+| `settings/` | `SettingsPage.tsx` — LLM provider and model selection |
 
 ## Code Conventions
 
